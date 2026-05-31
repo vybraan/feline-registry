@@ -1,0 +1,75 @@
+---
+- name: Provision and harden cluster node
+  hosts: all
+  become: yes
+  vars:
+    packages:
+      - curl
+      - ca-certificates
+      - conntrack-tools
+      - ufw
+
+  tasks:
+    - name: Install system packages
+      community.general.pacman:
+        name: "{{ packages }}"
+        state: present
+
+    - name: Enable and start ufw
+      systemd:
+        name: ufw
+        state: started
+        enabled: yes
+
+    - name: Allow SSH before setting default deny policy
+      community.general.ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+
+    - name: Set default ufw policies
+      community.general.ufw:
+        default: "{{ item.default }}"
+        direction: "{{ item.direction }}"
+      loop:
+        - { default: deny, direction: incoming }
+        - { default: allow, direction: outgoing }
+
+    - name: Open k3s ports
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - 6443
+        - 10250
+        - 8472
+
+    - name: Disable SSH root login
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^PermitRootLogin"
+        line: "PermitRootLogin no"
+      notify: restart sshd
+
+    - name: Ensure /etc/rancher/k3s directory exists
+      file:
+        path: /etc/rancher/k3s
+        state: directory
+        mode: "0755"
+
+    - name: Deploy k3s registries configuration
+      copy:
+        dest: /etc/rancher/k3s/registries.yaml
+        content: |
+          mirrors:
+            docker.io:
+              endpoint:
+                - "https://registry-1.docker.io"
+        mode: "0644"
+
+  handlers:
+    - name: restart sshd
+      systemd:
+        name: sshd
+        state: restarted
