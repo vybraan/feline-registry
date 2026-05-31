@@ -105,14 +105,18 @@ func handleRegister(store *Store) http.HandlerFunc {
 		namesGauge.Set(float64(store.Count()))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]string{"name": name})
+		if err := json.NewEncoder(w).Encode(map[string]string{"name": name}); err != nil {
+			log.Printf("error encoding response: %v", err)
+		}
 	}
 }
 
 func handleList(store *Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"names": store.List()})
+		if err := json.NewEncoder(w).Encode(map[string]any{"names": store.List()}); err != nil {
+			log.Printf("error encoding response: %v", err)
+		}
 	}
 }
 
@@ -126,18 +130,30 @@ func main() {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+			log.Printf("error encoding healthz response: %v", err)
+		}
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ready"}); err != nil {
+			log.Printf("error encoding readyz response: %v", err)
+		}
 	})
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           metricsMiddleware(mux),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	log.Printf("feline registry listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, metricsMiddleware(mux)))
+	log.Fatal(srv.ListenAndServe())
 }

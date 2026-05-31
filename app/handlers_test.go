@@ -8,7 +8,8 @@ import (
 	"testing"
 )
 
-func setupTestServer() *http.ServeMux {
+func setupTestServer(t *testing.T) *http.ServeMux {
+	t.Helper()
 	store := &Store{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /names", handleRegister(store))
@@ -16,18 +17,22 @@ func setupTestServer() *http.ServeMux {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+			t.Fatal(err)
+		}
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ready"}); err != nil {
+			t.Fatal(err)
+		}
 	})
 	return mux
 }
 
 func TestRegisterName(t *testing.T) {
-	mux := setupTestServer()
+	mux := setupTestServer(t)
 	body := bytes.NewBufferString(`{"name":"lion"}`)
 	req := httptest.NewRequest(http.MethodPost, "/names", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -37,14 +42,16 @@ func TestRegisterName(t *testing.T) {
 		t.Fatalf("expected %d, got %d", http.StatusCreated, w.Code)
 	}
 	var resp map[string]string
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
 	if resp["name"] != "lion" {
 		t.Fatalf("expected lion, got %q", resp["name"])
 	}
 }
 
 func TestListNames(t *testing.T) {
-	mux := setupTestServer()
+	mux := setupTestServer(t)
 	postBody := bytes.NewBufferString(`{"name":"tiger"}`)
 	postReq := httptest.NewRequest(http.MethodPost, "/names", postBody)
 	postReq.Header.Set("Content-Type", "application/json")
@@ -62,14 +69,16 @@ func TestListNames(t *testing.T) {
 	var resp struct {
 		Names []string `json:"names"`
 	}
-	json.Unmarshal(getRes.Body.Bytes(), &resp)
+	if err := json.Unmarshal(getRes.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
 	if len(resp.Names) != 1 || resp.Names[0] != "tiger" {
 		t.Fatalf("expected [tiger], got %v", resp.Names)
 	}
 }
 
 func TestRegisterNameRejectsEmptyName(t *testing.T) {
-	mux := setupTestServer()
+	mux := setupTestServer(t)
 	body := bytes.NewBufferString(`{"name":"   "}`)
 	req := httptest.NewRequest(http.MethodPost, "/names", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -81,7 +90,7 @@ func TestRegisterNameRejectsEmptyName(t *testing.T) {
 }
 
 func TestHealthz(t *testing.T) {
-	mux := setupTestServer()
+	mux := setupTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -91,7 +100,7 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestReadyz(t *testing.T) {
-	mux := setupTestServer()
+	mux := setupTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
